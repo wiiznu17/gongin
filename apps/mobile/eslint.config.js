@@ -1,10 +1,12 @@
-// https://docs.expo.dev/guides/using-eslint/
-const { defineConfig } = require('eslint/config');
-const expoConfig = require('eslint-config-expo/flat');
+import { mobileConfig } from '@gongin/eslint-config/mobile';
 
-module.exports = defineConfig([
-  expoConfig,
+/** @type {import("eslint").Linter.Config[]} */
+export default [
+  ...mobileConfig,
   {
-    ignores: ['dist/*'],
+    // Override กฎเฉพาะหน้างานของแอป Mobile
+    rules: {
+      // 'no-console': 'error'
+    },
   },
-]);
+];
