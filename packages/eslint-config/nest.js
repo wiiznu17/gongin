@@ -4,21 +4,13 @@ import tseslint from "typescript-eslint";
 import globals from "globals";
 import { config as baseConfig } from "./base.js";
 
-/**
- * คอนฟิก ESLint สำหรับ NestJS API
- * @type {import("eslint").Linter.Config[]}
- */
 export const nestConfig = [
   ...baseConfig,
   js.configs.recommended,
-  eslintConfigPrettier,
   ...tseslint.configs.recommended,
   {
     languageOptions: {
-      globals: {
-        ...globals.node,
-        ...globals.jest,
-      },
+      globals: { ...globals.node, ...globals.jest },
       sourceType: "module",
     },
   },
@@ -30,4 +22,5 @@ export const nestConfig = [
       "@typescript-eslint/no-floating-promises": "warn",
     },
   },
+  eslintConfigPrettier,
 ];

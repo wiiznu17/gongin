@@ -2,7 +2,7 @@ import js from "@eslint/js";
 import eslintConfigPrettier from "eslint-config-prettier";
 import turboPlugin from "eslint-plugin-turbo";
 import tseslint from "typescript-eslint";
-import onlyWarn from "eslint-plugin-only-warn";
+import prettierPlugin from "eslint-plugin-prettier";
 
 /**
  * A shared ESLint configuration for the repository.
@@ -11,22 +11,19 @@ import onlyWarn from "eslint-plugin-only-warn";
  * */
 export const config = [
   js.configs.recommended,
-  eslintConfigPrettier,
   ...tseslint.configs.recommended,
   {
     plugins: {
       turbo: turboPlugin,
+      prettier: prettierPlugin,
     },
     rules: {
       "turbo/no-undeclared-env-vars": "warn",
-    },
-  },
-  {
-    plugins: {
-      onlyWarn,
+      "prettier/prettier": "error", // จะเป็นสีแดงแล้วถ้าไม่มี only-warn
     },
   },
   {
     ignores: ["dist/**"],
   },
+  eslintConfigPrettier, // ย้ายมาไว้ท้ายสุดเพื่อให้ปิดกฎที่ซ้ำซ้อนได้จริง
 ];
