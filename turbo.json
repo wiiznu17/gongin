@@ -19,7 +19,8 @@
       "persistent": true
     },
     "lint": {
-      "dependsOn": ["^lint"]
+      "dependsOn": ["^lint"],
+      "env": ["*"]
     },
     "check-types": {
       "dependsOn": ["^check-types"]

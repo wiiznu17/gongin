@@ -1,3 +1,6 @@
+import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common'; // เพิ่ม
+import { Reflector } from '@nestjs/core'; // เพิ่ม
+
 @Injectable()
 export class RolesGuard implements CanActivate {
   constructor(private reflector: Reflector) {}
@@ -7,6 +10,7 @@ export class RolesGuard implements CanActivate {
     if (!requiredRoles) return true;
 
     const { user } = context.switchToHttp().getRequest();
-    return requiredRoles.includes(user.role);
+    // เพิ่มการตรวจสอบว่ามี user object หรือไม่ก่อนเช็ค role
+    return user && requiredRoles.includes(user.role);
   }
 }
