@@ -1,5 +1,5 @@
 {
-  "name": "GinGon",
+  "name": "gongin",
   "private": true,
   "scripts": {
     "build": "turbo run build",

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI, Part } from '@google/generative-ai';
 import { SupabaseService } from '../common/supabase/supabase.service';
@@ -12,73 +12,76 @@ export class AiService {
     private configService: ConfigService,
     private supabaseService: SupabaseService,
   ) {
+    // ตั้งค่า Gemini Integration
     this.genAI = new GoogleGenerativeAI(this.configService.get<string>('GEMINI_API_KEY')!);
     this.model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
   }
 
-  // ฟังก์ชันแปลง Buffer เป็น Part สำหรับ Gemini
-  private bufferToGenerativePart(buffer: Buffer, mimeType: string): Part {
+  // แปลง Buffer เป็นรูปแบบที่ Gemini รับได้
+  private toGenerativePart(buffer: Buffer, mimeType: string): Part {
     return {
-      inlineData: {
-        data: buffer.toString('base64'),
-        mimeType,
-      },
+      inlineData: { data: buffer.toString('base64'), mimeType },
     };
   }
 
-  async analyzeFood(imageBuffer: Buffer, userId: string) {
-    // 1. วิเคราะห์วัตถุดิบจากภาพด้วย Gemini (Image Processing)
-    const prompt =
-      "ระบุวัตถุดิบและสมุนไพรในอาหารนี้อย่างละเอียดในรูปแบบ JSON: { 'ingredients': ['ชื่อภาษาไทย'] }";
-    const imagePart = this.bufferToGenerativePart(imageBuffer, 'image/jpeg');
+  async processFoodImage(imageBuffer: Buffer, userId: string) {
+    try {
+      // 1. Image Processing: ให้ AI วิเคราะห์วัตถุดิบจากรูปภาพ
+      const prompt = 'วิเคราะห์ภาพอาหารนี้ แล้วระบุวัตถุดิบหลักและสมุนไพรออกมาเป็นรายการภาษาไทย';
+      const imagePart = this.toGenerativePart(imageBuffer, 'image/jpeg');
+      const result = await this.model.generateContent([prompt, imagePart]);
+      const ingredientsText = result.response.text();
 
-    const result = await this.model.generateContent([prompt, imagePart]);
-    const response = await result.response;
-    const ingredients = JSON.parse(response.text()).ingredients;
-
-    // 2. เริ่มระบบ RAG & Matching Engine
-    return this.runMatchingEngine(ingredients, userId);
+      // 2. RAG System & Medical Matching: ค้นหาความเสี่ยงร่วมกับยาของผู้ใช้
+      return await this.medicalMatchingEngine(ingredientsText, userId);
+    } catch (error) {
+      console.error('Error processing food image:', error);
+      throw new InternalServerErrorException('AI Processing failed');
+    }
   }
-  private async runMatchingEngine(ingredients: string[], userId: string) {
-    // ชั้นที่ 1: ดึงรายการยาของผู้ใช้จากฐานข้อมูล
-    const { data: userMedications } = await this.supabaseService.adminClient
+
+  async processVoiceSymptom(audioBuffer: Buffer) {
+    // 1. Voice Processing: แปลงเสียงเป็นข้อความและอาการป่วย
+    const prompt = 'จากไฟล์เสียงนี้ สรุปอาการป่วยของผู้ใช้และประวัติการกินเป็นข้อความภาษาไทย';
+    const audioPart = this.toGenerativePart(audioBuffer, 'audio/wav'); // หรือ mimeType อื่น
+    const result = await this.model.generateContent([prompt, audioPart]);
+    return { analysis: result.response.text() };
+  }
+
+  private async medicalMatchingEngine(ingredients: string, userId: string) {
+    // ดึงรายการยาของผู้ใช้จากฐานข้อมูล
+    const { data: userMeds } = await this.supabaseService.adminClient
       .from('medications')
       .select('generic_name, brand_name')
       .eq('user_id', userId);
 
-    // ชั้นที่ 2: ค้นหาความเสี่ยงจาก Interaction Rules (RAG)
-    const risks: any[] = [];
-    if (userMedications) {
-      for (const med of userMedications) {
-        // ใช้ RPC match_interaction_rules ที่สร้างไว้ในเฟส 2 (Vector Search)
-        // ในขั้นตอนนี้เราจะค้นหาว่าวัตถุดิบใดขัดกับยาตัวนี้ไหม
-        const { data: matchedRules } = await this.supabaseService.adminClient.rpc(
-          'match_interaction_rules',
-          {
-            query_text: med.generic_name, // ค้นหาความสัมพันธ์
-            match_threshold: 0.5,
-            match_count: 5,
-          },
-        );
-
-        if (matchedRules) risks.push(...matchedRules);
+    // Layer 1: Hard-coded Rules (RAG) - ค้นหาข้อห้ามจากฐานข้อมูล interaction_rules
+    // ใช้ RPC สำหรับ Vector Search ที่ตั้งไว้ในเฟส 2
+    const risksFound: any[] = [];
+    if (userMeds) {
+      for (const med of userMeds) {
+        const { data } = await this.supabaseService.adminClient.rpc('match_interaction_rules', {
+          query_text: med.generic_name,
+          match_threshold: 0.5,
+          match_count: 3,
+        });
+        if (data) risksFound.push(...data);
       }
     }
 
-    // สรุปผลด้วย AI โดยใช้ Context จากฐานข้อมูล (Final Reasoning)
+    // Layer 2: AI Reasoning - ส่งข้อมูลทั้งหมดให้ AI วิเคราะห์ความปลอดภัยซ้อนอีกชั้น
     const finalPrompt = `
-      ผู้ป่วยทานยา: ${JSON.stringify(userMedications)}
-      วัตถุดิบในอาหาร: ${ingredients.join(', ')}
-      กฎความปลอดภัยจากฐานข้อมูล: ${JSON.stringify(risks)}
-      
-      ให้สรุปว่าอาหารนี้ปลอดภัยหรือไม่ พร้อมเหตุผลอ้างอิงจากข้อมูลยาที่ได้รับ
+      วัตถุดิบที่ตรวจเจอ: ${ingredients}
+      รายการยาที่ผู้ใช้ทาน: ${JSON.stringify(userMeds)}
+      กฎข้อห้ามทางการแพทย์ที่พบ: ${JSON.stringify(risksFound)}
+      คำแนะนำ: ให้วิเคราะห์ความเสี่ยงว่าอาหารนี้ปลอดภัยสำหรับผู้ป่วยรายนี้หรือไม่ พร้อมให้เหตุผล
     `;
 
     const finalResult = await this.model.generateContent(finalPrompt);
     return {
-      is_safe: !finalResult.response.text().includes('ไม่ปลอดภัย'),
+      safe: !finalResult.response.text().includes('ไม่ปลอดภัย'),
       analysis: finalResult.response.text(),
-      detected_ingredients: ingredients,
+      risks_from_db: risksFound,
     };
   }
 }

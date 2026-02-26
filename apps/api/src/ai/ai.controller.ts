@@ -1,8 +1,8 @@
 import {
   Controller,
   Post,
-  UseInterceptors,
   UploadedFile,
+  UseInterceptors,
   UseGuards,
   Request,
 } from '@nestjs/common';
@@ -12,12 +12,19 @@ import { AuthGuard } from '../common/guards/auth.guard';
 
 @Controller('ai')
 export class AiController {
-  constructor(private aiService: AiService) {}
+  constructor(private readonly aiService: AiService) {}
 
   @Post('analyze-food')
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthGuard) //
   @UseInterceptors(FileInterceptor('image'))
   async analyzeFood(@UploadedFile() file: Express.Multer.File, @Request() req) {
-    return this.aiService.analyzeFood(file.buffer, req.user.id);
+    return this.aiService.processFoodImage(file.buffer, req.user.id);
+  }
+
+  @Post('analyze-voice')
+  @UseGuards(AuthGuard) //
+  @UseInterceptors(FileInterceptor('audio'))
+  async analyzeVoice(@UploadedFile() file: Express.Multer.File) {
+    return this.aiService.processVoiceSymptom(file.buffer);
   }
 }
